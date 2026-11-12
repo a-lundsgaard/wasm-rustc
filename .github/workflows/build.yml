@@ -15,7 +15,7 @@ on:
         default: AngelOnFira/rust
         required: true
       rust_ref:
-        description: branch/rev of the fork (riw-wasm20 = bjorn3 wasm20 + Phase B + vendored clif2wasm/riwl)
+        description: commit SHA (preferred, so the release records its exact source) or branch of the fork
         default: riw-wasm20
         required: true
       tag:
@@ -26,14 +26,15 @@ on:
         type: boolean
         default: false
 
+# Build jobs read only; the release job alone may write (it publishes the artifacts).
 permissions:
-  contents: write   # needed only when publish=true
+  contents: read
 
 jobs:
   # The long job: rustc.wasm itself (+ the riscv64 no_std and x86_64 metadata-std
   # sysroots that ride along in the same tree).
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 350   # stay under the 6 h hosted-runner cap
     steps:
       - name: Clone the rust fork (riw-wasm20)
@@ -45,14 +46,15 @@ jobs:
         run: |
           git clone https://github.com/${{ inputs.rust_repo }} rust
           git -C rust checkout "${{ inputs.rust_ref }}"
+          echo "Building rust commit $(git -C rust rev-parse HEAD)"
 
       - name: Checkout this repo (scripts)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: wasm-rustc
 
       - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
+        uses: jlumbroso/free-disk-space@cf1e78c50ca91e757bab3edc229027eebfc07871 # main, 2026-11-04
         with:
           tool-cache: true
           android: true
@@ -74,7 +76,7 @@ jobs:
           free -h
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.x'
 
@@ -111,12 +113,9 @@ jobs:
         # March 2026 base. Bootstrap accepts an external LLVM >= 21 instead of building one.
         run: |
           sudo apt-get update
-          if ! sudo apt-get install -y llvm-21-dev zlib1g-dev libzstd-dev; then
-            wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-            echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
-            sudo apt-get update
-            sudo apt-get install -y llvm-21-dev zlib1g-dev libzstd-dev
-          fi
+          # Ubuntu's own archive only; the installed version is logged for the provenance record.
+          sudo apt-get install -y llvm-21-dev zlib1g-dev libzstd-dev
+          dpkg-query -W llvm-21-dev
           # Some llvm-config builds list Polly among their libraries.
           sudo apt-get install -y libpolly-21-dev || true
           /usr/lib/llvm-21/bin/llvm-config --version
@@ -148,7 +147,7 @@ jobs:
         run: wasm-rustc/scripts/package-artifacts.sh
 
       - name: Upload workflow artifacts (main set)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: main-${{ inputs.tag }}
           path: out/*.tar.zst
@@ -159,21 +158,22 @@ jobs:
   # Duplicates the stage1 host build (the price of parallelism on hosted runners)
   # but skips the long stage2 wasip1 cross build entirely.
   wasip1-sysroot:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 350
     steps:
       - name: Clone the rust fork (riw-wasm20)
         run: |
           git clone https://github.com/${{ inputs.rust_repo }} rust
           git -C rust checkout "${{ inputs.rust_ref }}"
+          echo "Building rust commit $(git -C rust rev-parse HEAD)"
 
       - name: Checkout this repo (scripts)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: wasm-rustc
 
       - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
+        uses: jlumbroso/free-disk-space@cf1e78c50ca91e757bab3edc229027eebfc07871 # main, 2026-11-04
         with:
           tool-cache: true
           android: true
@@ -195,7 +195,7 @@ jobs:
           free -h
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.x'
 
@@ -219,12 +219,9 @@ jobs:
         # March 2026 base. Bootstrap accepts an external LLVM >= 21 instead of building one.
         run: |
           sudo apt-get update
-          if ! sudo apt-get install -y llvm-21-dev zlib1g-dev libzstd-dev; then
-            wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-            echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
-            sudo apt-get update
-            sudo apt-get install -y llvm-21-dev zlib1g-dev libzstd-dev
-          fi
+          # Ubuntu's own archive only; the installed version is logged for the provenance record.
+          sudo apt-get install -y llvm-21-dev zlib1g-dev libzstd-dev
+          dpkg-query -W llvm-21-dev
           # Some llvm-config builds list Polly among their libraries.
           sudo apt-get install -y libpolly-21-dev || true
           /usr/lib/llvm-21/bin/llvm-config --version
@@ -244,7 +241,7 @@ jobs:
         run: wasm-rustc/scripts/package-artifacts.sh
 
       - name: Upload workflow artifacts (wasip1 set)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wasip1-${{ inputs.tag }}
           path: out/*.tar.zst
@@ -253,10 +250,12 @@ jobs:
   # Gather both jobs' tarballs, produce one combined SHA256SUMS, optionally publish.
   release:
     needs: [build, wasip1-sysroot]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: out
           merge-multiple: true
@@ -265,7 +264,7 @@ jobs:
         run: ( cd out && sha256sum *.tar.zst > SHA256SUMS && cat SHA256SUMS )
 
       - name: Upload checksums
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: SHA256SUMS-${{ inputs.tag }}
           path: out/SHA256SUMS
