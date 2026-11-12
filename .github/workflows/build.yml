@@ -105,6 +105,25 @@ jobs:
           grep -q riscv64gc-unknown-none-elf bootstrap.toml || \
             printf '\n[target."riscv64gc-unknown-none-elf"]\ncc = "clang"\nno-std = true\n' >> bootstrap.toml
 
+      - name: Use a packaged LLVM 21
+        working-directory: rust
+        # Rust's CI deletes old prebuilt LLVMs, so `download-ci-llvm` fails (404) for this fork's
+        # March 2026 base. Bootstrap accepts an external LLVM >= 21 instead of building one.
+        run: |
+          sudo apt-get update
+          if ! sudo apt-get install -y llvm-21-dev zlib1g-dev libzstd-dev; then
+            wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+            echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+            sudo apt-get update
+            sudo apt-get install -y llvm-21-dev zlib1g-dev libzstd-dev
+          fi
+          # Some llvm-config builds list Polly among their libraries.
+          sudo apt-get install -y libpolly-21-dev || true
+          /usr/lib/llvm-21/bin/llvm-config --version
+          sed -i 's/^download-ci-llvm = true/download-ci-llvm = false/' bootstrap.toml
+          sed -i "/^\[target.'x86_64-unknown-linux-gnu'\]/a llvm-config = \"/usr/lib/llvm-21/bin/llvm-config\"" bootstrap.toml
+          grep -n "download-ci-llvm\|llvm-config" bootstrap.toml
+
       - name: Build rustc.wasm (cranelift, prebuilt CI LLVM) — long
         working-directory: rust
         run: |
@@ -193,6 +212,25 @@ jobs:
           tar -xzf wasi-sdk.tar.gz && rm wasi-sdk.tar.gz
           echo "WASI_SDK_PATH=$PWD/wasi-sdk-32.0-x86_64-linux" >> "$GITHUB_ENV"
           echo "WASI_SYSROOT=$PWD/wasi-sdk-32.0-x86_64-linux/share/wasi-sysroot" >> "$GITHUB_ENV"
+
+      - name: Use a packaged LLVM 21
+        working-directory: rust
+        # Rust's CI deletes old prebuilt LLVMs, so `download-ci-llvm` fails (404) for this fork's
+        # March 2026 base. Bootstrap accepts an external LLVM >= 21 instead of building one.
+        run: |
+          sudo apt-get update
+          if ! sudo apt-get install -y llvm-21-dev zlib1g-dev libzstd-dev; then
+            wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+            echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+            sudo apt-get update
+            sudo apt-get install -y llvm-21-dev zlib1g-dev libzstd-dev
+          fi
+          # Some llvm-config builds list Polly among their libraries.
+          sudo apt-get install -y libpolly-21-dev || true
+          /usr/lib/llvm-21/bin/llvm-config --version
+          sed -i 's/^download-ci-llvm = true/download-ci-llvm = false/' bootstrap.toml
+          sed -i "/^\[target.'x86_64-unknown-linux-gnu'\]/a llvm-config = \"/usr/lib/llvm-21/bin/llvm-config\"" bootstrap.toml
+          grep -n "download-ci-llvm\|llvm-config" bootstrap.toml
 
       - name: Build wasm32-wasip1 std sysroot (stage1)
         working-directory: rust
